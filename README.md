@@ -1,5 +1,4 @@
-# branding
-FOSSBilling branding
+# Branding
 
 FOSSBilling is free and open source software. You are free to use and modify it under the terms of the Apache 2.0 [license](https://github.com/FOSSBilling/FOSSBilling/blob/main/LICENSE).
 
