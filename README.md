@@ -6,10 +6,13 @@ That license does **NOT** cover the FOSSBilling logo which is copyright of FOSSB
 
 ## What you can do
 
-* :heavy_check_mark: Use the logo when writing about or linking to FOSSBilling.
-* :heavy_check_mark: Use the original in the original form and color.
+* :heavy_check_mark: Use the logo when writing about or linking to FOSSBilling, when truthful and not misleading.
+* :heavy_check_mark: Use the logo in the original form and color.
 
-## What you can't do
+## Limitations
 
-* :x: Modify the logo in any way.
-* :x: Publish, distribute, sublicense, and/or sell it as your own.
+* :x: Don't modify the logo in any way.
+* :x: Don't publish, distribute, sublicense, and/or sell it as your own.
+* :x: Don't use FOSSBilling's branding in the name of your business, product, service, app, domain name, social media account, other offering, or business indicator unless you have explicit permission from FOSSBilling.
+* :x: Don't change the capitalization or punctuation. Always refer to the brand name as "FOSSBilling", with no spaces and with the letters "FOSSB" being capitalized.
+* :x: Don't place FOSSBilling's logo over a background that is too busy or does not provide enough contrast.
