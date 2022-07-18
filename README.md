@@ -25,10 +25,10 @@ That license does **NOT** cover the FOSSBilling logo which is copyright of FOSSB
 
 If you are using the logo anywhere publically visible, please ensure that the colours are displayed correctly. The colours used in the logo are:
 
-Black - #050407
-Blue - #0081C5
-Gold - #FAC965
-White - #FFFFFF
+* Black - #050407
+* Blue - #0081C5
+* Gold - #FAC965
+* White - #FFFFFF
 
 ## Font
 
