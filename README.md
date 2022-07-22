@@ -1,6 +1,6 @@
 # Branding
 
-The official logo for FOSSBilling was agreed on by the committee and community, and is based on work by @anatolinicolae
+The official logo for FOSSBilling was agreed on by the committee and community, and is based on work by [@anatolinicolae](https://github.com/anatolinicolae).
 
 ## Licensing
 
