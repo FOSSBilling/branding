@@ -1,3 +1,14 @@
+<h1 align="center">
+  <br>
+<a href="https://fossbilling.org/">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://fossbilling.org/img/wordmark-white.png">
+      <img alt="FOSSBilling logo" src="https://fossbilling.org/img/wordmark-black.png" height="100">
+    </picture>
+  </a>
+    <br>
+</h1>
+
 # Branding
 
 The official logo for FOSSBilling was agreed on by the committee and community, and is based on work by [@anatolinicolae](https://github.com/anatolinicolae).
