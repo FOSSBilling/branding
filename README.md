@@ -26,6 +26,7 @@ That license does **NOT** cover the FOSSBilling name or the logo which are copyr
 
 ## Limitations
 
+* :x: You may not use the name "FOSSBilling" as a product/service title, account or company name.
 * :x: Don't modify the logo in any way.
 * :x: Don't publish, distribute, sublicense, and/or sell it as your own.
 * :x: Don't use FOSSBilling's branding in the name of your business, product, service, app, domain name, social media account, other offering, or business indicator unless you have explicit permission from FOSSBilling.
