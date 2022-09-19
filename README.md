@@ -17,7 +17,7 @@ The official logo for FOSSBilling was agreed on by the committee and community, 
 
 FOSSBilling is free and open source software. You are free to use and modify it under the terms of the Apache 2.0 [license](https://github.com/FOSSBilling/FOSSBilling/blob/main/LICENSE).
 
-That license does **NOT** cover the FOSSBilling logo which is copyright of FOSSBilling. Using the logo (with or without the name), or derivatives, as your own, for your own services or company is not allowed without explicit permission.
+That license does **NOT** cover the FOSSBilling name or the logo which are copyright of FOSSBilling. Using the name or logo (with or without the name), or derivatives, as your own, for your own services or company is not allowed without explicit permission.
 
 ## What you can do
 
