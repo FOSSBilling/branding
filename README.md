@@ -64,9 +64,9 @@ Generation removes obsolete exports for sizes or variants removed from the confi
 
 ## Publishing Exports
 
-The [export workflow](.github/workflows/export-assets.yml) generates a downloadable `fossbilling-branding` artifact on pull requests, pushes to `main`, and manual runs. The bundle includes the generated assets, `manifest.json`, and `fossbilling-branding.zip` containing the assets and manifest.
+The [export workflow](.github/workflows/export-assets.yml) generates a downloadable `fossbilling-branding` artifact on pull requests, pushes to `main`, and manual runs. The artifact contains the generated assets and `manifest.json`.
 
-Pushes to `main` publish the bundle to Cloudflare R2. To publish the selected branch from a manual run, set `publish` to `true`.
+Pushes to `main` publish these files and `fossbilling-branding.zip` to Cloudflare R2. To publish the selected branch from a manual run, set `publish` to `true`.
 
 ## Licensing
 

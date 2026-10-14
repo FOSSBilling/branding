@@ -56,18 +56,18 @@ jobs:
           cp -R assets/. "$RUNNER_TEMP/branding-export/"
           cp -R dist/. "$RUNNER_TEMP/branding-export/"
 
-      - name: Create Download Archive
-        working-directory: ${{ runner.temp }}/branding-export
-        run: |
-          zip -q -r "$RUNNER_TEMP/fossbilling-branding.zip" .
-          mv "$RUNNER_TEMP/fossbilling-branding.zip" .
-
       - name: Upload Export Artifact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: fossbilling-branding
           path: ${{ runner.temp }}/branding-export/
           if-no-files-found: error
+
+      - name: Create Download Archive
+        working-directory: ${{ runner.temp }}/branding-export
+        run: |
+          zip -q -r "$RUNNER_TEMP/fossbilling-branding.zip" .
+          mv "$RUNNER_TEMP/fossbilling-branding.zip" .
 
       - name: Load Cloudflare R2 Secrets
         id: load-secrets
