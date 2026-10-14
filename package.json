@@ -1,0 +1,14 @@
+{
+  "name": "fossbilling-branding-exports",
+  "private": true,
+  "scripts": {
+    "generate": "node scripts/generate-assets.mjs"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "devDependencies": {
+    "sharp": "0.35.5",
+    "svgo": "4.1.0"
+  }
+}

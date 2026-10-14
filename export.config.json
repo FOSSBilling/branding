@@ -1,0 +1,23 @@
+{
+  "assetsOutput": "assets/",
+  "output": "dist/",
+  "iconSizes": [
+    128,
+    256,
+    512
+  ],
+  "logoWidths": [
+    600,
+    1200
+  ],
+  "variants": {
+    "light-background": {
+      "icon": "source/light-background/fossbilling-icon.svg",
+      "logo": "source/light-background/fossbilling-logo.svg"
+    },
+    "dark-background": {
+      "icon": "source/dark-background/fossbilling-icon.svg",
+      "logo": "source/dark-background/fossbilling-logo.svg"
+    }
+  }
+}
