@@ -1,0 +1,83 @@
+name: Export Branding Assets
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish the branding assets to Cloudflare R2'
+        required: false
+        default: 'false'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: branding-exports-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run generate
+
+      - name: Check Committed SVGs
+        run: |
+          git diff --exit-code -- assets
+          test -z "$(git ls-files --others --exclude-standard -- assets)"
+
+      - name: Assemble Export Bundle
+        run: |
+          mkdir -p "$RUNNER_TEMP/branding-export"
+          cp -R assets/. "$RUNNER_TEMP/branding-export/"
+          cp -R dist/. "$RUNNER_TEMP/branding-export/"
+
+      - name: Create Download Archive
+        working-directory: ${{ runner.temp }}/branding-export
+        run: |
+          zip -q -r "$RUNNER_TEMP/fossbilling-branding.zip" .
+          mv "$RUNNER_TEMP/fossbilling-branding.zip" .
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: fossbilling-branding
+          path: ${{ runner.temp }}/branding-export/
+          if-no-files-found: error
+
+      - name: Load Cloudflare R2 Secrets
+        id: load-secrets
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish == 'true')
+        uses: 1password/load-secrets-action@70062d7a876d3eb6334754fa26efd2fbd90c32f2 # v5.0.1
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          # Cloudflare R2 - CI/CD (branding GitHub Actions) credentials stored in 1Password.
+          CF_R2_ACCESS_KEY_ID: op://mkqkefntgcmjlgyxzeaekzuuvq/xddzaoo5rrgl3wg2memaxpcntm/access-key-id
+          CF_R2_SECRET_ACCESS_KEY: op://mkqkefntgcmjlgyxzeaekzuuvq/xddzaoo5rrgl3wg2memaxpcntm/secret-access-key
+
+      - name: Publish to Cloudflare R2
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish == 'true')
+        env:
+          AWS_ACCESS_KEY_ID: ${{ steps.load-secrets.outputs.CF_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ steps.load-secrets.outputs.CF_R2_SECRET_ACCESS_KEY }}
+          AWS_S3_ENDPOINT: ${{ vars.CF_R2_ENDPOINT_URL }}
+          AWS_S3_BUCKET: ${{ vars.CF_R2_DOWNLOAD_BUCKET }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          # Configure AWS CLI to use the classic transfer client for S3 operations.
+          aws configure set default.s3.preferred_transfer_client classic
+          aws s3 sync "$RUNNER_TEMP/branding-export/" "s3://$AWS_S3_BUCKET/" \
+            --endpoint-url "${AWS_S3_ENDPOINT}" \
+            --delete --cache-control "public, max-age=300" --no-progress
