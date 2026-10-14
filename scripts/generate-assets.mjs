@@ -3,11 +3,12 @@ import { readFile, writeFile, mkdir, readdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import svgoConfig from './svgo.config.mjs';
+import { createPreview } from './create-preview.mjs';
 
 // Use outlined SVG masters; live-text artwork requires fonts and is rejected.
 // Remove obsolete generated files after all inputs and destinations are checked.
 
-const help = `Optimise FOSSBilling SVG masters, then generate PNGs, favicons, and an asset manifest.
+const help = `Optimise FOSSBilling SVG masters, then generate PNGs, favicons, a preview, and an asset manifest.
 
 Usage: node scripts/generate-assets.mjs [options]
   --config PATH   Configuration file (default: export.config.json)
@@ -159,6 +160,8 @@ async function main() {
     favicon.sizes = frames.map(({ size }) => size);
     await add(`${prefix}/favicon/apple-touch-icon.png`, await png(variant.square, 180), 'apple-touch-icon', prefix);
   }
+  const preview = await add('preview.png', await createPreview(variants, sharp, png), 'preview', null);
+  preview.variants = variants.map(({ name }) => name);
   // Paths describe the published bundle, where assets/ and dist/ are combined.
   const manifest = { exportedAt: new Date().toISOString(), files: files.map(({ asset }) => asset) };
   files.push({ file: path.join(output, 'manifest.json'), data: JSON.stringify(manifest, null, 2) + '\n' });
@@ -174,7 +177,7 @@ async function main() {
   // Only recognise this exporter's filenames; do not traverse symlinked directories.
   const generated = {
     assets: /^[a-z0-9]+(?:-[a-z0-9]+)*\/fossbilling-(?:icon|logo)\.svg$/,
-    dist: /^(?:manifest\.json|[a-z0-9]+(?:-[a-z0-9]+)*\/(?:png\/icon\/fossbilling-icon-\d+\.png|png\/logo\/fossbilling-logo-\d+w\.png|favicon\/(?:favicon\.(?:svg|ico)|apple-touch-icon\.png)))$/,
+    dist: /^(?:manifest\.json|preview\.png|[a-z0-9]+(?:-[a-z0-9]+)*\/(?:png\/icon\/fossbilling-icon-\d+\.png|png\/logo\/fossbilling-logo-\d+w\.png|favicon\/(?:favicon\.(?:svg|ico)|apple-touch-icon\.png)))$/,
   };
   for (const [directory, pattern] of [[assetsOutput, generated.assets], [output, generated.dist]]) {
     const directories = [directory];
@@ -197,7 +200,7 @@ async function main() {
   }
   for (const file of obsolete) await rm(file);
   console.log(`Generated ${variants.length * 2} optimised SVGs in ${assetsOutput}`);
-  console.log(`Generated ${files.length - variants.length * 2} PNG/favicon/manifest files in ${output}`);
+  console.log(`Generated ${files.length - variants.length * 2} PNG/favicon/preview/manifest files in ${output}`);
   if (obsolete.size) console.log(`Removed ${obsolete.size} obsolete generated files`);
 }
 

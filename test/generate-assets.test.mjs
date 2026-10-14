@@ -6,6 +6,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
+import sharp from 'sharp';
 
 const exec = promisify(execFile);
 const script = fileURLToPath(new URL('../scripts/generate-assets.mjs', import.meta.url));
@@ -49,8 +50,13 @@ test('catalogs all published assets with a UTC timestamp and accurate raster dim
       paths.push(relative);
       const asset = manifest.files.find(asset => asset.path === relative);
       assert.ok(asset, `Missing manifest entry for ${relative}`);
-      assert.ok(['light-background', 'dark-background'].includes(asset.variant));
-      assert.ok(['icon', 'logo', 'favicon', 'apple-touch-icon'].includes(asset.type));
+      if (asset.type === 'preview') {
+        assert.equal(asset.variant, null);
+        assert.deepEqual(asset.variants, ['light-background', 'dark-background']);
+      } else {
+        assert.ok(['light-background', 'dark-background'].includes(asset.variant));
+      }
+      assert.ok(['icon', 'logo', 'favicon', 'apple-touch-icon', 'preview'].includes(asset.type));
       assert.equal(asset.format, path.extname(file).slice(1));
       const data = await readFile(file);
       if (asset.format === 'png') {
@@ -85,7 +91,7 @@ test('removes obsolete sizes and variants and refreshes the manifest while retai
   assert.equal(await readFile(path.join(root, 'dist/notes.txt'), 'utf8'), 'keep');
   const manifest = JSON.parse(await readFile(path.join(root, 'dist/manifest.json'), 'utf8'));
   assert.ok(manifest.exportedAt);
-  assert.ok(manifest.files.every(asset => asset.variant === 'light-background'));
+  assert.ok(manifest.files.every(asset => asset.type === 'preview' || asset.variant === 'light-background'));
   assert.ok(!manifest.files.some(asset => asset.path.endsWith('fossbilling-icon-256.png')));
 });
 
@@ -136,4 +142,36 @@ test('supports a combined SVG and raster output directory', async t => {
   delete config.variants['dark-background'];
   await generate();
   await assert.rejects(access(path.join(root, 'dist/dark-background/fossbilling-logo.svg')), { code: 'ENOENT' });
+});
+
+
+test('creates an opaque preview and refreshes it when variants are removed', async t => {
+  const { root, config, generate } = await fixture(t);
+  await generate();
+  const file = path.join(root, 'dist/preview.png');
+  const original = await readFile(file);
+  const image = await sharp(original).raw().toBuffer({ resolveWithObject: true });
+  assert.equal(image.info.width, 1200);
+  assert.equal(image.info.height, 880);
+  assert.equal(image.info.channels, 3);
+  const pixel = (x, y) => [...image.data.subarray((y * image.info.width + x) * 3, (y * image.info.width + x) * 3 + 3)];
+  assert.deepEqual(pixel(25, 115), [255, 255, 255]);
+  assert.deepEqual(pixel(25, 365), [23, 28, 36]);
+  assert.deepEqual(pixel(25, 615), [0, 0, 0]);
+  // Blue fixture artwork appears in the full-logo, standalone and favicon positions.
+  for (const [x, y] of [[50, 175], [1000, 210], [725, 285], [810, 280]]) {
+    assert.deepEqual(pixel(x, y), [7, 133, 188]);
+  }
+  delete config.variants['dark-background'];
+  await generate();
+  const updated = await readFile(file);
+  assert.notDeepEqual(updated, original);
+  assert.equal((await sharp(updated).metadata()).height, 380);
+  const manifest = JSON.parse(await readFile(path.join(root, 'dist/manifest.json'), 'utf8'));
+  const entry = manifest.files.find(asset => asset.type === 'preview');
+  assert.equal(entry.path, 'preview.png');
+  assert.equal(entry.variant, null);
+  assert.deepEqual(entry.variants, ['light-background']);
+  assert.equal(entry.width, 1200);
+  assert.equal(entry.height, 380);
 });

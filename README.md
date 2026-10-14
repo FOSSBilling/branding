@@ -56,7 +56,9 @@ npm ci
 npm run generate
 ```
 
-Generates optimised SVGs in `assets/`, plus transparent PNGs, SVG/ICO favicons, and Apple touch icons for both background variants in `dist/`. The generated `dist/manifest.json` lists exported assets and records the UTC export time as `exportedAt`.
+Generates optimised SVGs in `assets/`, plus transparent PNGs, SVG/ICO favicons, and Apple touch icons for both background variants in `dist/`. The generated `dist/manifest.json` lists exported assets and records the UTC export time as `exportedAt`. 
+
+The bundle includes `preview.png`, a reference sheet showing the logos and icons on light and dark backgrounds, including header and favicon sizes.
 
 Configure source paths and export sizes in `export.config.json`. Commit the optimised SVGs in `assets/`; do not commit `dist/`.
 
