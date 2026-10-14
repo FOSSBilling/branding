@@ -117,12 +117,14 @@ test('cleanup does not follow symlinked directories', async t => {
   const { root, generate } = await fixture(t);
   const external = path.join(root, 'external');
   await mkdir(external);
-  const untouched = path.join(external, 'fossbilling-logo.svg');
-  await writeFile(untouched, 'keep');
+  const untouched = ['fossbilling-logo.svg', 'apple-touch-icon.png'].map(name => path.join(external, name));
+  for (const file of untouched) await writeFile(file, 'keep');
   await mkdir(path.join(root, 'assets'));
-  await symlink(external, path.join(root, 'assets/old-background'));
+  await symlink(external, path.join(root, 'assets/old-background'), 'dir');
+  await mkdir(path.join(root, 'dist/old-background'), { recursive: true });
+  await symlink(external, path.join(root, 'dist/old-background/favicon'), 'dir');
   await generate();
-  assert.equal(await readFile(untouched, 'utf8'), 'keep');
+  for (const file of untouched) assert.equal(await readFile(file, 'utf8'), 'keep');
 });
 
 test('supports a combined SVG and raster output directory', async t => {

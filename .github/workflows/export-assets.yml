@@ -15,7 +15,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: branding-exports-${{ github.ref }}
+  # Publishing runs share a group because they update the same R2 bucket.
+  group: branding-exports-${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish == 'true')) && 'publish' || github.ref }}
   cancel-in-progress: false
 
 jobs:

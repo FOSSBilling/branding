@@ -177,15 +177,18 @@ async function main() {
     dist: /^(?:manifest\.json|[a-z0-9]+(?:-[a-z0-9]+)*\/(?:png\/icon\/fossbilling-icon-\d+\.png|png\/logo\/fossbilling-logo-\d+w\.png|favicon\/(?:favicon\.(?:svg|ico)|apple-touch-icon\.png)))$/,
   };
   for (const [directory, pattern] of [[assetsOutput, generated.assets], [output, generated.dist]]) {
-    const entries = await readdir(directory, { recursive: true, withFileTypes: true })
-      .catch(error => { if (error.code !== 'ENOENT') throw error; return []; });
-    for (const entry of entries) {
-      if (entry.isDirectory()) continue;
-      const file = path.join(entry.parentPath, entry.name);
-      const relative = path.relative(directory, file).split(path.sep).join('/');
-      if (!pattern.test(relative) || expected.has(file)) continue;
-      if (sourcePaths.has(await canonical(file))) throw new Error(`Output would remove a source: ${file}`);
-      obsolete.add(file);
+    const directories = [directory];
+    for (const current of directories) {
+      const entries = await readdir(current, { withFileTypes: true })
+        .catch(error => { if (error.code !== 'ENOENT') throw error; return []; });
+      for (const entry of entries) {
+        const file = path.join(current, entry.name);
+        if (entry.isDirectory()) { directories.push(file); continue; }
+        const relative = path.relative(directory, file).split(path.sep).join('/');
+        if (!pattern.test(relative) || expected.has(file)) continue;
+        if (sourcePaths.has(await canonical(file))) throw new Error(`Output would remove a source: ${file}`);
+        obsolete.add(file);
+      }
     }
   }
   for (const { file, data } of files) {
