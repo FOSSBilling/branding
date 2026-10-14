@@ -7,7 +7,7 @@ import svgoConfig from './svgo.config.mjs';
 // Use outlined SVG masters; live-text artwork requires fonts and is rejected.
 // Remove obsolete generated files after all inputs and destinations are checked.
 
-const help = `Optimise FOSSBilling SVG masters, then generate PNGs and favicons.
+const help = `Optimise FOSSBilling SVG masters, then generate PNGs, favicons, and an asset manifest.
 
 Usage: node scripts/generate-assets.mjs [options]
   --config PATH   Configuration file (default: export.config.json)
@@ -125,8 +125,14 @@ async function main() {
   }
   const sourcePaths = new Set(await Promise.all([...sources].map(canonical)));
   const files = [];
-  function add(relative, data, directory = output) {
-    files.push({ file: path.join(directory, relative), data });
+  async function add(relative, data, type, variant, directory = output) {
+    const asset = { path: relative.split(path.sep).join('/'), variant, type, format: path.extname(relative).slice(1) };
+    if (asset.format === 'png') {
+      const { width, height } = await sharp(data).metadata();
+      Object.assign(asset, { width, height });
+    }
+    files.push({ file: path.join(directory, relative), data, asset });
+    return asset;
   }
   async function png(svg, width) {
     const input = Buffer.from(svg);
@@ -138,20 +144,24 @@ async function main() {
   for (const variant of variants) {
     const prefix = variant.name;
     for (const type of ['icon', 'logo']) {
-      add(`${prefix}/fossbilling-${type}.svg`, variant[type], assetsOutput);
+      await add(`${prefix}/fossbilling-${type}.svg`, variant[type], type, prefix, assetsOutput);
     }
     for (const size of iconSizes) {
-      add(`${prefix}/png/icon/fossbilling-icon-${size}.png`, await png(variant.square, size));
+      await add(`${prefix}/png/icon/fossbilling-icon-${size}.png`, await png(variant.square, size), 'icon', prefix);
     }
     for (const width of logoWidths) {
-      add(`${prefix}/png/logo/fossbilling-logo-${width}w.png`, await png(variant.logo, width));
+      await add(`${prefix}/png/logo/fossbilling-logo-${width}w.png`, await png(variant.logo, width), 'logo', prefix);
     }
-    add(`${prefix}/favicon/favicon.svg`, variant.square);
+    await add(`${prefix}/favicon/favicon.svg`, variant.square, 'favicon', prefix);
     const frames = [];
     for (const size of [16, 32, 48]) frames.push({ size, png: await png(variant.square, size) });
-    add(`${prefix}/favicon/favicon.ico`, ico(frames));
-    add(`${prefix}/favicon/apple-touch-icon.png`, await png(variant.square, 180));
+    const favicon = await add(`${prefix}/favicon/favicon.ico`, ico(frames), 'favicon', prefix);
+    favicon.sizes = frames.map(({ size }) => size);
+    await add(`${prefix}/favicon/apple-touch-icon.png`, await png(variant.square, 180), 'apple-touch-icon', prefix);
   }
+  // Paths describe the published bundle, where assets/ and dist/ are combined.
+  const manifest = { exportedAt: new Date().toISOString(), files: files.map(({ asset }) => asset) };
+  files.push({ file: path.join(output, 'manifest.json'), data: JSON.stringify(manifest, null, 2) + '\n' });
   const targets = new Set();
   for (const { file } of files) {
     const target = await canonical(file);
@@ -184,7 +194,7 @@ async function main() {
   }
   for (const file of obsolete) await rm(file);
   console.log(`Generated ${variants.length * 2} optimised SVGs in ${assetsOutput}`);
-  console.log(`Generated ${files.length - variants.length * 2} PNG/favicon files in ${output}`);
+  console.log(`Generated ${files.length - variants.length * 2} PNG/favicon/manifest files in ${output}`);
   if (obsolete.size) console.log(`Removed ${obsolete.size} obsolete generated files`);
 }
 

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdtemp, mkdir, readFile, writeFile, rm, access, symlink } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile, rm, access, symlink, readdir } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -32,7 +32,40 @@ async function fixture(t) {
   };
 }
 
-test('removes obsolete sizes, variants and the old manifest while retaining unrelated files', async t => {
+test('catalogs all published assets with a UTC timestamp and accurate raster dimensions', async t => {
+  const { root, generate } = await fixture(t);
+  const started = Date.now();
+  await generate();
+  const manifest = JSON.parse(await readFile(path.join(root, 'dist/manifest.json'), 'utf8'));
+  assert.match(manifest.exportedAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+  assert.ok(Date.parse(manifest.exportedAt) >= started && Date.parse(manifest.exportedAt) <= Date.now());
+  const paths = [];
+  for (const directory of ['assets', 'dist']) {
+    const entries = await readdir(path.join(root, directory), { recursive: true, withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isFile() || entry.name === 'manifest.json') continue;
+      const file = path.join(entry.parentPath, entry.name);
+      const relative = path.relative(path.join(root, directory), file).split(path.sep).join('/');
+      paths.push(relative);
+      const asset = manifest.files.find(asset => asset.path === relative);
+      assert.ok(asset, `Missing manifest entry for ${relative}`);
+      assert.ok(['light-background', 'dark-background'].includes(asset.variant));
+      assert.ok(['icon', 'logo', 'favicon', 'apple-touch-icon'].includes(asset.type));
+      assert.equal(asset.format, path.extname(file).slice(1));
+      const data = await readFile(file);
+      if (asset.format === 'png') {
+        assert.equal(asset.width, data.readUInt32BE(16));
+        assert.equal(asset.height, data.readUInt32BE(20));
+      } else if (asset.format === 'ico') {
+        const sizes = Array.from({ length: data.readUInt16LE(4) }, (_, i) => data.readUInt8(6 + i * 16) || 256);
+        assert.deepEqual(asset.sizes, sizes);
+      }
+    }
+  }
+  assert.deepEqual(manifest.files.map(asset => asset.path).sort(), paths.sort());
+});
+
+test('removes obsolete sizes and variants and refreshes the manifest while retaining unrelated files', async t => {
   const { root, config, generate } = await fixture(t);
   await generate();
   await writeFile(path.join(root, 'dist', 'manifest.json'), '{}');
@@ -41,7 +74,7 @@ test('removes obsolete sizes, variants and the old manifest while retaining unre
   delete config.variants['dark-background'];
   await generate();
   for (const relative of [
-    'dist/manifest.json', 'dist/light-background/png/icon/fossbilling-icon-256.png',
+    'dist/light-background/png/icon/fossbilling-icon-256.png',
     'dist/dark-background/png/icon/fossbilling-icon-128.png',
     'dist/dark-background/png/logo/fossbilling-logo-600w.png',
     'dist/dark-background/favicon/favicon.svg', 'dist/dark-background/favicon/favicon.ico',
@@ -50,6 +83,10 @@ test('removes obsolete sizes, variants and the old manifest while retaining unre
   ]) await assert.rejects(access(path.join(root, relative)), { code: 'ENOENT' });
   await access(path.join(root, 'dist/light-background/png/icon/fossbilling-icon-128.png'));
   assert.equal(await readFile(path.join(root, 'dist/notes.txt'), 'utf8'), 'keep');
+  const manifest = JSON.parse(await readFile(path.join(root, 'dist/manifest.json'), 'utf8'));
+  assert.ok(manifest.exportedAt);
+  assert.ok(manifest.files.every(asset => asset.variant === 'light-background'));
+  assert.ok(!manifest.files.some(asset => asset.path.endsWith('fossbilling-icon-256.png')));
 });
 
 test('invalid inputs leave existing exports intact', async t => {
