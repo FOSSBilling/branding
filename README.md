@@ -11,9 +11,11 @@
 
 # FOSSBilling Branding
 
-Logo and icon assets for FOSSBilling. This design evolves the original artwork based on work by [@anatolinicolae](https://github.com/anatolinicolae).
+Logo and icon assets for FOSSBilling, based on the original artwork by [@anatolinicolae](https://github.com/anatolinicolae).
 
 ## Choose an Asset
+
+Individual assets are available at [https://branding.fossbilling.org](https://branding.fossbilling.org/). See the [manifest](https://branding.fossbilling.org/manifest.json) for available files, or [download the ZIP](https://branding.fossbilling.org/fossbilling-branding.zip).
 
 Choose the variant for the **background behind the artwork**. Both variants have transparent backgrounds; the folder name describes where to use them.
 
@@ -26,10 +28,11 @@ Use the SVGs when possible. Their lettering is converted to paths, so they rende
 
 ## Editing
 
-The production EPS files contain editable vector paths. Open in Adobe Illustrator and save as `.ai` if a native Illustrator document is needed.
+The SVGs in `source/*-background/` are the editable masters. Open them in Inkscape or Adobe Illustrator.
 
-For typography changes, use the text SVGs in `source/*-background/` and install the
-included [Manrope variable font](source/fonts/Manrope/Manrope-VariableFont_wght.ttf). Software without variable-font support should use the outlined versions in `assets/*-background/` to preserve the intended appearance.
+For typography changes, install the included [Manrope variable font](source/fonts/Manrope/Manrope-VariableFont_wght.ttf) and edit `fossbilling-logo-text.svg` in software with variable-font support. Keep this file's lettering editable, then save a copy as `fossbilling-logo.svg` with the text converted to paths.
+
+When changing the icon, update it in both the standalone icon and the logo files, including the text version, for both background variants. Run `npm run generate` and commit the source changes and regenerated `assets/` SVGs.
 
 ## Colours and Typography
 
@@ -53,9 +56,17 @@ npm ci
 npm run generate
 ```
 
-Generates optimised SVGs in `assets/`, plus transparent PNGs, SVG/ICO favicons, and Apple touch icons for both background variants in `dist/`.
+Generates optimised SVGs in `assets/`, plus transparent PNGs, SVG/ICO favicons, and Apple touch icons for both background variants in `dist/`. The generated `dist/manifest.json` lists exported assets and records the UTC export time as `exportedAt`.
 
 Configure source paths and export sizes in `export.config.json`. Commit the optimised SVGs in `assets/`; do not commit `dist/`.
+
+Generation removes obsolete exports for sizes or variants removed from the configuration.
+
+## Publishing Exports
+
+The [export workflow](.github/workflows/export-assets.yml) generates a downloadable `fossbilling-branding` artifact on pull requests, pushes to `main`, and manual runs. The bundle includes the generated assets, `manifest.json`, and `fossbilling-branding.zip` containing the assets and manifest.
+
+Pushes to `main` publish the bundle to Cloudflare R2. To publish the selected branch from a manual run, set `publish` to `true`.
 
 ## Licensing
 
