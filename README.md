@@ -13,6 +13,10 @@
 
 Logo and icon assets for FOSSBilling, based on the original artwork by [@anatolinicolae](https://github.com/anatolinicolae).
 
+## Preview
+
+![FOSSBilling logos and icons on light, dark, and black backgrounds](https://branding.fossbilling.org/preview.png)
+
 ## Choose an Asset
 
 Individual assets are available at [https://branding.fossbilling.org](https://branding.fossbilling.org/). See the [manifest](https://branding.fossbilling.org/manifest.json) for available files, or [download the ZIP](https://branding.fossbilling.org/fossbilling-branding.zip).
