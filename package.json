@@ -1,5 +1,5 @@
 {
-  "name": "fossbilling-branding-exports",
+  "name": "fossbilling-branding",
   "private": true,
   "scripts": {
     "generate": "node scripts/generate-assets.mjs",
