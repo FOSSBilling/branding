@@ -1,12 +1,11 @@
 #!/usr/bin/env node
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, readdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import { createHash } from 'node:crypto';
 import svgoConfig from './svgo.config.mjs';
 
 // Use outlined SVG masters; live-text artwork requires fonts and is rejected.
-// Exports overwrite matching filenames but do not remove obsolete files.
+// Remove obsolete generated files after all inputs and destinations are checked.
 
 const help = `Optimise FOSSBilling SVG masters, then generate PNGs and favicons.
 
@@ -18,7 +17,7 @@ Usage: node scripts/generate-assets.mjs [options]
 
 Input and configured output paths are relative to the configuration file.
 Both output overrides are relative to the current working directory.
-Existing exports with matching names are overwritten; other files are untouched.
+Existing exports are overwritten and obsolete generated files are removed.
 `;
 
 function sizes(value, name) {
@@ -125,28 +124,9 @@ async function main() {
     }
   }
   const sourcePaths = new Set(await Promise.all([...sources].map(canonical)));
-  const targets = new Set();
-  const planned = [];
-  for (const { name } of variants) {
-    for (const type of ['icon', 'logo']) planned.push([assetsOutput, `${name}/fossbilling-${type}.svg`]);
-    for (const size of iconSizes) planned.push([output, `${name}/png/icon/fossbilling-icon-${size}.png`]);
-    for (const width of logoWidths) planned.push([output, `${name}/png/logo/fossbilling-logo-${width}w.png`]);
-    for (const file of ['favicon.svg', 'favicon.ico', 'apple-touch-icon.png']) planned.push([output, `${name}/favicon/${file}`]);
-  }
-  planned.push([output, 'manifest.json']);
-  for (const [directory, relative] of planned) {
-    const target = await canonical(path.join(directory, relative));
-    if (sourcePaths.has(target)) throw new Error(`Output would overwrite a source: ${target}`);
-    if (targets.has(target)) throw new Error(`Output paths overlap: ${target}`);
-    targets.add(target);
-  }
   const files = [];
-  async function save(relative, data, scope = 'dist') {
-    const target = path.join(scope === 'assets' ? assetsOutput : output, relative);
-    if (sources.has(target)) throw new Error(`Output would overwrite a source: ${target}`);
-    await mkdir(path.dirname(target), { recursive: true });
-    await writeFile(target, data);
-    files.push({ root: scope, path: relative.split(path.sep).join('/'), sha256: createHash('sha256').update(data).digest('hex') });
+  function add(relative, data, directory = output) {
+    files.push({ file: path.join(directory, relative), data });
   }
   async function png(svg, width) {
     const input = Buffer.from(svg);
@@ -158,23 +138,54 @@ async function main() {
   for (const variant of variants) {
     const prefix = variant.name;
     for (const type of ['icon', 'logo']) {
-      await save(`${prefix}/fossbilling-${type}.svg`, variant[type], 'assets');
+      add(`${prefix}/fossbilling-${type}.svg`, variant[type], assetsOutput);
     }
     for (const size of iconSizes) {
-      await save(`${prefix}/png/icon/fossbilling-icon-${size}.png`, await png(variant.square, size));
+      add(`${prefix}/png/icon/fossbilling-icon-${size}.png`, await png(variant.square, size));
     }
     for (const width of logoWidths) {
-      await save(`${prefix}/png/logo/fossbilling-logo-${width}w.png`, await png(variant.logo, width));
+      add(`${prefix}/png/logo/fossbilling-logo-${width}w.png`, await png(variant.logo, width));
     }
-    await save(`${prefix}/favicon/favicon.svg`, variant.square);
+    add(`${prefix}/favicon/favicon.svg`, variant.square);
     const frames = [];
     for (const size of [16, 32, 48]) frames.push({ size, png: await png(variant.square, size) });
-    await save(`${prefix}/favicon/favicon.ico`, ico(frames));
-    await save(`${prefix}/favicon/apple-touch-icon.png`, await png(variant.square, 180));
+    add(`${prefix}/favicon/favicon.ico`, ico(frames));
+    add(`${prefix}/favicon/apple-touch-icon.png`, await png(variant.square, 180));
   }
-  await save('manifest.json', JSON.stringify({ files: [...files] }, null, 2) + '\n');
+  const targets = new Set();
+  for (const { file } of files) {
+    const target = await canonical(file);
+    if (sourcePaths.has(target)) throw new Error(`Output would overwrite a source: ${target}`);
+    if (targets.has(target)) throw new Error(`Output paths overlap: ${target}`);
+    targets.add(target);
+  }
+  const expected = new Set(files.map(({ file }) => file));
+  const obsolete = new Set();
+  // Only recognise this exporter's filenames; do not traverse symlinked directories.
+  const generated = {
+    assets: /^[a-z0-9]+(?:-[a-z0-9]+)*\/fossbilling-(?:icon|logo)\.svg$/,
+    dist: /^(?:manifest\.json|[a-z0-9]+(?:-[a-z0-9]+)*\/(?:png\/icon\/fossbilling-icon-\d+\.png|png\/logo\/fossbilling-logo-\d+w\.png|favicon\/(?:favicon\.(?:svg|ico)|apple-touch-icon\.png)))$/,
+  };
+  for (const [directory, pattern] of [[assetsOutput, generated.assets], [output, generated.dist]]) {
+    const entries = await readdir(directory, { recursive: true, withFileTypes: true })
+      .catch(error => { if (error.code !== 'ENOENT') throw error; return []; });
+    for (const entry of entries) {
+      if (entry.isDirectory()) continue;
+      const file = path.join(entry.parentPath, entry.name);
+      const relative = path.relative(directory, file).split(path.sep).join('/');
+      if (!pattern.test(relative) || expected.has(file)) continue;
+      if (sourcePaths.has(await canonical(file))) throw new Error(`Output would remove a source: ${file}`);
+      obsolete.add(file);
+    }
+  }
+  for (const { file, data } of files) {
+    await mkdir(path.dirname(file), { recursive: true });
+    await writeFile(file, data);
+  }
+  for (const file of obsolete) await rm(file);
   console.log(`Generated ${variants.length * 2} optimised SVGs in ${assetsOutput}`);
-  console.log(`Generated ${files.length - variants.length * 2} PNG/favicon/manifest files in ${output}`);
+  console.log(`Generated ${files.length - variants.length * 2} PNG/favicon files in ${output}`);
+  if (obsolete.size) console.log(`Removed ${obsolete.size} obsolete generated files`);
 }
 
 main().catch(error => { console.error(`Asset generation failed: ${error.message}`); process.exitCode = 1; });

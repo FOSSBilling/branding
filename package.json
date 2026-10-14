@@ -2,7 +2,8 @@
   "name": "fossbilling-branding-exports",
   "private": true,
   "scripts": {
-    "generate": "node scripts/generate-assets.mjs"
+    "generate": "node scripts/generate-assets.mjs",
+    "test": "node --test"
   },
   "engines": {
     "node": ">=24"
