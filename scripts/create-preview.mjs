@@ -9,11 +9,11 @@ export async function createPreview(variants, sharp, png) {
   await access(fontfile);
   const rows = variants.flatMap(variant => {
     if (variant.name === 'dark-background') return [
-      { variant, background: '#171C24', foreground: '#FFFFFF', label: 'Dark-background Variant / Charcoal' },
-      { variant, background: '#000000', foreground: '#FFFFFF', label: 'Dark-background Variant / Black' },
+      { variant, background: '#171C24', foreground: '#FFFFFF', label: 'Dark Background' },
+      { variant, background: '#000000', foreground: '#FFFFFF', label: 'Black Background' },
     ];
     return [{ variant, background: '#FFFFFF', foreground: '#171C24',
-      label: variant.name === 'light-background' ? 'Light-background Variant / White' : `${variant.name} / white` }];
+      label: variant.name === 'light-background' ? 'Light Background' : `${variant.name} / White` }];
   });
   const width = 1200;
   const height = 130 + rows.length * 250;
@@ -31,7 +31,7 @@ export async function createPreview(variants, sharp, png) {
     layers.push({ input: await png(svg, targetWidth), left, top });
   }
   await label('FOSSBilling Branding Asset Preview', 32, 25, '#171C24', 26);
-  await label('Visual reference only. Use the individual SVG and PNG files in this bundle.', 32, 68, '#596371', 15);
+  await label('Use the individual files for production.', 32, 68, '#596371', 15);
   for (const [index, row] of rows.entries()) {
     const y = 110 + index * 250;
     const input = await sharp({ create: { width: 1160, height: 230, channels: 3, background: row.background } }).png().toBuffer();
