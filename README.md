@@ -24,7 +24,7 @@ Choose the variant for the **background behind the artwork**. Both variants have
 | Light | [SVG](assets/light-background/fossbilling-logo.svg) | [SVG](assets/light-background/fossbilling-icon.svg) | Black wordmark and wallet |
 | Dark or black | [SVG](assets/dark-background/fossbilling-logo.svg) | [SVG](assets/dark-background/fossbilling-icon.svg) | White wordmark and muted wallet outline |
 
-Use the SVGs when possible. Their lettering is converted to paths, so they render without an installed font. Generate PNGs when a vector format is not supported. Scale proportionally and leave clear space around the artwork.
+Use the SVGs when possible. Their lettering is converted to paths, so they render without an installed font. Use the PNG exports when a vector format is not supported. Scale proportionally and leave clear space around the artwork.
 
 ## Editing
 

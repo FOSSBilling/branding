@@ -8,15 +8,16 @@ on:
     inputs:
       publish:
         description: 'Publish the branding assets to Cloudflare R2'
+        type: boolean
         required: false
-        default: 'false'
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
   # Publishing runs share a group because they update the same R2 bucket.
-  group: branding-exports-${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish == 'true')) && 'publish' || github.ref }}
+  group: branding-exports-${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.publish)) && 'publish' || github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -60,7 +61,7 @@ jobs:
 
       - name: Load Cloudflare R2 Secrets
         id: load-secrets
-        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish == 'true')
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.publish)
         uses: 1password/load-secrets-action@70062d7a876d3eb6334754fa26efd2fbd90c32f2 # v5.0.1
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
@@ -69,7 +70,7 @@ jobs:
           CF_R2_SECRET_ACCESS_KEY: op://mkqkefntgcmjlgyxzeaekzuuvq/xddzaoo5rrgl3wg2memaxpcntm/secret-access-key
 
       - name: Publish to Cloudflare R2
-        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish == 'true')
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.publish)
         env:
           AWS_ACCESS_KEY_ID: ${{ steps.load-secrets.outputs.CF_R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ steps.load-secrets.outputs.CF_R2_SECRET_ACCESS_KEY }}
