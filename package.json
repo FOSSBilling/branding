@@ -2,14 +2,18 @@
   "name": "fossbilling-branding",
   "private": true,
   "scripts": {
-    "generate": "node scripts/generate-assets.mjs",
-    "test": "node --test"
+    "generate": "node scripts/generate-assets.ts",
+    "test": "node --test",
+    "typecheck": "tsc --noEmit"
   },
   "engines": {
     "node": ">=24"
   },
   "devDependencies": {
+    "@types/node": "24.19.2",
     "sharp": "0.35.5",
-    "svgo": "4.1.0"
-  }
+    "svgo": "4.1.0",
+    "typescript": "7.0.2"
+  },
+  "type": "module"
 }

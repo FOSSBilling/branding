@@ -1,11 +1,14 @@
+import type sharpFactory from 'sharp';
+import type { OverlayOptions } from 'sharp';
+import type { PngRenderer, Variant } from './types.ts';
 import { access } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
 // Use the bundled font for labels; logo lettering still comes from outlined SVGs.
 const fontfile = fileURLToPath(new URL('../source/fonts/Manrope/Manrope-VariableFont_wght.ttf', import.meta.url));
-const escape = value => value.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[char]);
+const escape = (value: string) => value.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[char]!);
 
-export async function createPreview(variants, sharp, png) {
+export async function createPreview(variants: Variant[], sharp: typeof sharpFactory, png: PngRenderer) {
   await access(fontfile);
   const rows = variants.flatMap(variant => {
     if (variant.name === 'dark-background') return [
@@ -17,17 +20,17 @@ export async function createPreview(variants, sharp, png) {
   });
   const width = 1200;
   const height = 130 + rows.length * 250;
-  const layers = [];
-  async function label(text, left, top, color, size = 16) {
+  const layers: OverlayOptions[] = [];
+  async function label(text: string, left: number, top: number, color: string, size = 16) {
     const input = await sharp({ text: {
       text: `<span foreground="${color}">${escape(text)}</span>`,
       font: `Manrope ${size}`, fontfile, rgba: true, dpi: 72,
     }}).png().toBuffer();
     layers.push({ input, left, top });
   }
-  async function artwork(svg, left, top, maxWidth, maxHeight) {
+  async function artwork(svg: string, left: number, top: number, maxWidth: number, maxHeight: number) {
     const { width: w, height: h } = await sharp(Buffer.from(svg)).metadata();
-    const targetWidth = Math.max(1, Math.floor(Math.min(maxWidth, maxHeight * w / h)));
+    const targetWidth = Math.max(1, Math.floor(Math.min(maxWidth, maxHeight * w! / h!)));
     layers.push({ input: await png(svg, targetWidth), left, top });
   }
   await label('FOSSBilling Branding Asset Preview', 32, 25, '#171C24', 26);

@@ -53,7 +53,7 @@ The wordmark uses [Manrope](https://github.com/google/fonts/tree/main/ofl/manrop
 
 ## Generating PNGs and Favicons
 
-Requires Node.js 24 or newer.
+Requires Node.js 24 or newer. The TypeScript scripts run directly in Node.js, without a build step.
 
 ```sh
 npm ci
@@ -67,6 +67,8 @@ The bundle includes `preview.png`, a reference sheet showing the logos and icons
 Configure source paths and export sizes in `export.config.json`. Commit the optimised SVGs in `assets/`; do not commit `dist/`.
 
 Generation removes obsolete exports for sizes or variants removed from the configuration.
+
+Run `npm run typecheck` to check the scripts and tests, and `npm test` to run the export tests.
 
 ## Publishing Exports
 
