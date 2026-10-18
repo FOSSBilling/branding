@@ -1,3 +1,5 @@
+import type { TestContext } from 'node:test';
+import type { AssetManifest } from '../scripts/types.ts';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { mkdtemp, mkdir, readFile, writeFile, rm, access, symlink, readdir } from 'node:fs/promises';
@@ -9,23 +11,24 @@ import test from 'node:test';
 import sharp from 'sharp';
 
 const exec = promisify(execFile);
-const script = fileURLToPath(new URL('../scripts/generate-assets.mjs', import.meta.url));
+const script = fileURLToPath(new URL('../scripts/generate-assets.ts', import.meta.url));
 const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="24" viewBox="0 0 32 24"><path fill="#0785bc" d="M0 0h32v24H0z"/></svg>';
 
-async function fixture(t) {
+async function fixture(t: TestContext) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'branding-export-test-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   await writeFile(path.join(root, 'master.svg'), svg);
+  const variants: Record<string, { icon: string; logo: string }> = {
+    'light-background': { icon: 'master.svg', logo: 'master.svg' },
+    'dark-background': { icon: 'master.svg', logo: 'master.svg' },
+  };
   const config = {
     assetsOutput: 'assets', output: 'dist', iconSizes: [128, 256], logoWidths: [600],
-    variants: {
-      'light-background': { icon: 'master.svg', logo: 'master.svg' },
-      'dark-background': { icon: 'master.svg', logo: 'master.svg' },
-    },
+    variants,
   };
   return {
     root, config,
-    async generate(...args) {
+    async generate(...args: string[]) {
       const configPath = path.join(root, 'export.config.json');
       await writeFile(configPath, JSON.stringify(config));
       return exec(process.execPath, [script, '--config', configPath, ...args]);
@@ -37,7 +40,7 @@ test('catalogs all published assets with a UTC timestamp and accurate raster dim
   const { root, generate } = await fixture(t);
   const started = Date.now();
   await generate();
-  const manifest = JSON.parse(await readFile(path.join(root, 'dist/manifest.json'), 'utf8'));
+  const manifest: AssetManifest = JSON.parse(await readFile(path.join(root, 'dist/manifest.json'), 'utf8'));
   assert.match(manifest.exportedAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
   assert.ok(Date.parse(manifest.exportedAt) >= started && Date.parse(manifest.exportedAt) <= Date.now());
   const paths = [];
@@ -54,7 +57,7 @@ test('catalogs all published assets with a UTC timestamp and accurate raster dim
         assert.equal(asset.variant, null);
         assert.deepEqual(asset.variants, ['light-background', 'dark-background']);
       } else {
-        assert.ok(['light-background', 'dark-background'].includes(asset.variant));
+        assert.ok(asset.variant !== null && ['light-background', 'dark-background'].includes(asset.variant));
       }
       assert.ok(['icon', 'logo', 'favicon', 'apple-touch-icon', 'preview'].includes(asset.type));
       assert.equal(asset.format, path.extname(file).slice(1));
@@ -89,7 +92,7 @@ test('removes obsolete sizes and variants and refreshes the manifest while retai
   ]) await assert.rejects(access(path.join(root, relative)), { code: 'ENOENT' });
   await access(path.join(root, 'dist/light-background/png/icon/fossbilling-icon-128.png'));
   assert.equal(await readFile(path.join(root, 'dist/notes.txt'), 'utf8'), 'keep');
-  const manifest = JSON.parse(await readFile(path.join(root, 'dist/manifest.json'), 'utf8'));
+  const manifest: AssetManifest = JSON.parse(await readFile(path.join(root, 'dist/manifest.json'), 'utf8'));
   assert.ok(manifest.exportedAt);
   assert.ok(manifest.files.every(asset => asset.type === 'preview' || asset.variant === 'light-background'));
   assert.ok(!manifest.files.some(asset => asset.path.endsWith('fossbilling-icon-256.png')));
@@ -154,7 +157,7 @@ test('creates an opaque preview and refreshes it when variants are removed', asy
   assert.equal(image.info.width, 1200);
   assert.equal(image.info.height, 880);
   assert.equal(image.info.channels, 3);
-  const pixel = (x, y) => [...image.data.subarray((y * image.info.width + x) * 3, (y * image.info.width + x) * 3 + 3)];
+  const pixel = (x: number, y: number) => [...image.data.subarray((y * image.info.width + x) * 3, (y * image.info.width + x) * 3 + 3)];
   assert.deepEqual(pixel(25, 115), [255, 255, 255]);
   assert.deepEqual(pixel(25, 365), [23, 28, 36]);
   assert.deepEqual(pixel(25, 615), [0, 0, 0]);
@@ -167,8 +170,9 @@ test('creates an opaque preview and refreshes it when variants are removed', asy
   const updated = await readFile(file);
   assert.notDeepEqual(updated, original);
   assert.equal((await sharp(updated).metadata()).height, 380);
-  const manifest = JSON.parse(await readFile(path.join(root, 'dist/manifest.json'), 'utf8'));
+  const manifest: AssetManifest = JSON.parse(await readFile(path.join(root, 'dist/manifest.json'), 'utf8'));
   const entry = manifest.files.find(asset => asset.type === 'preview');
+  assert.ok(entry);
   assert.equal(entry.path, 'preview.png');
   assert.equal(entry.variant, null);
   assert.deepEqual(entry.variants, ['light-background']);

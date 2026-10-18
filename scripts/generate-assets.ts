@@ -2,15 +2,16 @@
 import { readFile, writeFile, mkdir, readdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import svgoConfig from './svgo.config.mjs';
-import { createPreview } from './create-preview.mjs';
+import type { Asset, AssetManifest, Variant } from './types.ts';
+import svgoConfig from './svgo.config.ts';
+import { createPreview } from './create-preview.ts';
 
 // Use outlined SVG masters; live-text artwork requires fonts and is rejected.
 // Remove obsolete generated files after all inputs and destinations are checked.
 
 const help = `Optimise FOSSBilling SVG masters, then generate PNGs, favicons, a preview, and an asset manifest.
 
-Usage: node scripts/generate-assets.mjs [options]
+Usage: node scripts/generate-assets.ts [options]
   --config PATH   Configuration file (default: export.config.json)
   --output PATH   Override PNG/favicon output directory
   --assets-output PATH  Override optimised SVG output directory
@@ -21,7 +22,7 @@ Both output overrides are relative to the current working directory.
 Existing exports are overwritten and obsolete generated files are removed.
 `;
 
-function sizes(value, name) {
+function sizes(value: unknown, name: string): number[] {
   if (!Array.isArray(value) || value.some(n => !Number.isInteger(n) || n < 1 || n > 4096)) {
     throw new Error(`${name} must be an array of integer sizes from 1 to 4096.`);
   }
@@ -29,10 +30,10 @@ function sizes(value, name) {
 }
 
 // Only the outer SVG viewport changes; paths, clips and proportions stay intact.
-function squareSvg(svg, label) {
+function squareSvg(svg: string, label: string) {
   const root = svg.match(/<svg\b[^>]*>/);
   const viewBox = root?.[0].match(/\sviewBox\s*=\s*(["'])(.*?)\1/);
-  if (!viewBox) throw new Error(`${label} needs a viewBox on its root SVG.`);
+  if (!root || !viewBox) throw new Error(`${label} needs a viewBox on its root SVG.`);
   const numbers = viewBox[2].trim().split(/[\s,]+/).map(Number);
   const [x, y, width, height] = numbers;
   if (numbers.length !== 4 || !numbers.every(Number.isFinite) || width <= 0 || height <= 0) {
@@ -46,7 +47,7 @@ function squareSvg(svg, label) {
 }
 
 // ICO directory containing independently rendered RGBA PNG frames.
-function ico(frames) {
+function ico(frames: { size: number; png: Buffer }[]) {
   const header = Buffer.alloc(6);
   header.writeUInt16LE(1, 2);
   header.writeUInt16LE(frames.length, 4);
@@ -75,7 +76,13 @@ async function main() {
   if (values.help) { console.log(help); return; }
   const configPath = path.resolve(values.config);
   const configDir = path.dirname(configPath);
-  const config = JSON.parse(await readFile(configPath, 'utf8'));
+  const config: {
+    iconSizes?: unknown;
+    logoWidths?: unknown;
+    output?: unknown;
+    assetsOutput?: unknown;
+    variants?: Record<string, { icon?: unknown; logo?: unknown } | null>;
+  } = JSON.parse(await readFile(configPath, 'utf8'));
   const iconSizes = sizes(config.iconSizes ?? [128, 256, 512], 'iconSizes');
   const logoWidths = sizes(config.logoWidths ?? [600, 1200], 'logoWidths');
   if (typeof config.output !== 'string' || !config.output) throw new Error('Set output in the configuration.');
@@ -89,13 +96,13 @@ async function main() {
       || !Object.keys(config.variants).length) throw new Error('Configure at least one variant.');
   const { default: sharp } = await import('sharp');
   const { optimize } = await import('svgo');
-  const variants = [];
-  const sources = new Set();
+  const variants: Variant[] = [];
+  const sources = new Set<string>();
   // Validate and load every input before writing any exports.
   for (const [name, variant] of Object.entries(config.variants)) {
     if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name)) throw new Error(`Invalid variant name: ${name}`);
-    const loaded = {};
-    for (const type of ['icon', 'logo']) {
+    const loaded = { icon: '', logo: '' };
+    for (const type of ['icon', 'logo'] as const) {
       if (typeof variant?.[type] !== 'string') throw new Error(`${name}.${type} must be an SVG path.`);
       const file = path.resolve(configDir, variant[type]);
       sources.add(file);
@@ -110,14 +117,13 @@ async function main() {
       }
       loaded[type] = optimised;
     }
-    loaded.square = squareSvg(loaded.icon, `${name} icon`);
-    variants.push({ name, ...loaded });
+    variants.push({ name, ...loaded, square: squareSvg(loaded.icon, `${name} icon`) });
   }
   // Check every destination before writing, including aliases through symlinked folders.
   const { realpath, lstat } = await import('node:fs/promises');
-  async function canonical(file) {
+  async function canonical(file: string): Promise<string> {
     try { return await realpath(file); } catch (error) {
-      if (error.code !== 'ENOENT') throw error;
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
       // A dangling symlink is not an ordinary missing destination.
       const entry = await lstat(file).catch(e => { if (e.code !== 'ENOENT') throw e; return null; });
       if (entry?.isSymbolicLink()) throw new Error(`Dangling symlink: ${file}`);
@@ -125,26 +131,28 @@ async function main() {
     }
   }
   const sourcePaths = new Set(await Promise.all([...sources].map(canonical)));
-  const files = [];
-  async function add(relative, data, type, variant, directory = output) {
-    const asset = { path: relative.split(path.sep).join('/'), variant, type, format: path.extname(relative).slice(1) };
+  const files: { file: string; data: string | Buffer }[] = [];
+  const assets: Asset[] = [];
+  async function add(relative: string, data: string | Buffer, type: Asset['type'], variant: string | null, directory = output) {
+    const asset: Asset = { path: relative.split(path.sep).join('/'), variant, type, format: path.extname(relative).slice(1) };
     if (asset.format === 'png') {
       const { width, height } = await sharp(data).metadata();
       Object.assign(asset, { width, height });
     }
-    files.push({ file: path.join(directory, relative), data, asset });
+    files.push({ file: path.join(directory, relative), data });
+    assets.push(asset);
     return asset;
   }
-  async function png(svg, width) {
+  async function png(svg: string, width: number) {
     const input = Buffer.from(svg);
     const metadata = await sharp(input).metadata();
     // Render from vectors at >= 2x target resolution, then downsample.
-    const density = Math.max(72, Math.ceil(144 * width / metadata.width));
+    const density = Math.max(72, Math.ceil(144 * width / metadata.width!));
     return sharp(input, { density }).resize({ width }).ensureAlpha().png().toBuffer();
   }
   for (const variant of variants) {
     const prefix = variant.name;
-    for (const type of ['icon', 'logo']) {
+    for (const type of ['icon', 'logo'] as const) {
       await add(`${prefix}/fossbilling-${type}.svg`, variant[type], type, prefix, assetsOutput);
     }
     for (const size of iconSizes) {
@@ -163,7 +171,7 @@ async function main() {
   const preview = await add('preview.png', await createPreview(variants, sharp, png), 'preview', null);
   preview.variants = variants.map(({ name }) => name);
   // Paths describe the published bundle, where assets/ and dist/ are combined.
-  const manifest = { exportedAt: new Date().toISOString(), files: files.map(({ asset }) => asset) };
+  const manifest: AssetManifest = { exportedAt: new Date().toISOString(), files: assets };
   files.push({ file: path.join(output, 'manifest.json'), data: JSON.stringify(manifest, null, 2) + '\n' });
   const targets = new Set();
   for (const { file } of files) {
@@ -173,13 +181,13 @@ async function main() {
     targets.add(target);
   }
   const expected = new Set(files.map(({ file }) => file));
-  const obsolete = new Set();
+  const obsolete = new Set<string>();
   // Only recognise this exporter's filenames; do not traverse symlinked directories.
   const generated = {
     assets: /^[a-z0-9]+(?:-[a-z0-9]+)*\/fossbilling-(?:icon|logo)\.svg$/,
     dist: /^(?:manifest\.json|preview\.png|[a-z0-9]+(?:-[a-z0-9]+)*\/(?:png\/icon\/fossbilling-icon-\d+\.png|png\/logo\/fossbilling-logo-\d+w\.png|favicon\/(?:favicon\.(?:svg|ico)|apple-touch-icon\.png)))$/,
   };
-  for (const [directory, pattern] of [[assetsOutput, generated.assets], [output, generated.dist]]) {
+  for (const [directory, pattern] of [[assetsOutput, generated.assets], [output, generated.dist]] as const) {
     const directories = [directory];
     for (const current of directories) {
       const entries = await readdir(current, { withFileTypes: true })
