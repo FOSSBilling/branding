@@ -81,7 +81,7 @@ async function main() {
     logoWidths?: unknown;
     output?: unknown;
     assetsOutput?: unknown;
-    variants?: Record<string, Partial<Record<'icon' | 'logo', unknown>> | null>;
+    variants?: Record<string, { icon?: unknown; logo?: unknown } | null>;
   } = JSON.parse(await readFile(configPath, 'utf8'));
   const iconSizes = sizes(config.iconSizes ?? [128, 256, 512], 'iconSizes');
   const logoWidths = sizes(config.logoWidths ?? [600, 1200], 'logoWidths');
@@ -123,7 +123,7 @@ async function main() {
   const { realpath, lstat } = await import('node:fs/promises');
   async function canonical(file: string): Promise<string> {
     try { return await realpath(file); } catch (error) {
-      if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error;
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
       // A dangling symlink is not an ordinary missing destination.
       const entry = await lstat(file).catch(e => { if (e.code !== 'ENOENT') throw e; return null; });
       if (entry?.isSymbolicLink()) throw new Error(`Dangling symlink: ${file}`);
@@ -131,14 +131,16 @@ async function main() {
     }
   }
   const sourcePaths = new Set(await Promise.all([...sources].map(canonical)));
-  const files: { file: string; data: string | Buffer; asset?: Asset }[] = [];
+  const files: { file: string; data: string | Buffer }[] = [];
+  const assets: Asset[] = [];
   async function add(relative: string, data: string | Buffer, type: Asset['type'], variant: string | null, directory = output) {
     const asset: Asset = { path: relative.split(path.sep).join('/'), variant, type, format: path.extname(relative).slice(1) };
     if (asset.format === 'png') {
       const { width, height } = await sharp(data).metadata();
       Object.assign(asset, { width, height });
     }
-    files.push({ file: path.join(directory, relative), data, asset });
+    files.push({ file: path.join(directory, relative), data });
+    assets.push(asset);
     return asset;
   }
   async function png(svg: string, width: number) {
@@ -169,7 +171,7 @@ async function main() {
   const preview = await add('preview.png', await createPreview(variants, sharp, png), 'preview', null);
   preview.variants = variants.map(({ name }) => name);
   // Paths describe the published bundle, where assets/ and dist/ are combined.
-  const manifest: AssetManifest = { exportedAt: new Date().toISOString(), files: files.flatMap(({ asset }) => asset ? [asset] : []) };
+  const manifest: AssetManifest = { exportedAt: new Date().toISOString(), files: assets };
   files.push({ file: path.join(output, 'manifest.json'), data: JSON.stringify(manifest, null, 2) + '\n' });
   const targets = new Set();
   for (const { file } of files) {
@@ -189,7 +191,7 @@ async function main() {
     const directories = [directory];
     for (const current of directories) {
       const entries = await readdir(current, { withFileTypes: true })
-        .catch(error => { if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error; return []; });
+        .catch(error => { if (error.code !== 'ENOENT') throw error; return []; });
       for (const entry of entries) {
         const file = path.join(current, entry.name);
         if (entry.isDirectory()) { directories.push(file); continue; }

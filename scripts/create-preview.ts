@@ -1,6 +1,6 @@
 import type sharpFactory from 'sharp';
 import type { OverlayOptions } from 'sharp';
-import type { PngRenderer, Variant } from './types.ts';
+import type { Variant } from './types.ts';
 import { access } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
@@ -8,7 +8,11 @@ import { fileURLToPath } from 'node:url';
 const fontfile = fileURLToPath(new URL('../source/fonts/Manrope/Manrope-VariableFont_wght.ttf', import.meta.url));
 const escape = (value: string) => value.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[char]!);
 
-export async function createPreview(variants: Variant[], sharp: typeof sharpFactory, png: PngRenderer) {
+export async function createPreview(
+  variants: Variant[],
+  sharp: typeof sharpFactory,
+  png: (svg: string, width: number) => Promise<Buffer>,
+) {
   await access(fontfile);
   const rows = variants.flatMap(variant => {
     if (variant.name === 'dark-background') return [

@@ -18,12 +18,13 @@ async function fixture(t: TestContext) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'branding-export-test-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   await writeFile(path.join(root, 'master.svg'), svg);
-  const config: { assetsOutput: string; output: string; iconSizes: number[]; logoWidths: number[]; variants: Record<string, { icon: string; logo: string }> } = {
+  const variants: Record<string, { icon: string; logo: string }> = {
+    'light-background': { icon: 'master.svg', logo: 'master.svg' },
+    'dark-background': { icon: 'master.svg', logo: 'master.svg' },
+  };
+  const config = {
     assetsOutput: 'assets', output: 'dist', iconSizes: [128, 256], logoWidths: [600],
-    variants: {
-      'light-background': { icon: 'master.svg', logo: 'master.svg' },
-      'dark-background': { icon: 'master.svg', logo: 'master.svg' },
-    },
+    variants,
   };
   return {
     root, config,

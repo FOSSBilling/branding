@@ -5,8 +5,6 @@ export interface Variant {
   square: string;
 }
 
-export type PngRenderer = (svg: string, width: number) => Promise<Buffer>;
-
 export interface Asset {
   path: string;
   variant: string | null;
