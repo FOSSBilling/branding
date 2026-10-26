@@ -6,4 +6,4 @@ Separate exploration of adding FOSSBilling to the blue card. Starts from the ori
 
 Each background folder includes transparent SVG and PNG logo and icon samples, plus a logo with editable main lettering (requires the bundled Manrope font). Card lettering is outlined in every SVG for portable rendering.
 
-Production assets and the separate plain-chip samples are unchanged.
+Adopted in `source/` and `assets/`. The comparison shows the original design on the left. The plain-chip samples remain a separate concept.

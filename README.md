@@ -46,8 +46,10 @@ When changing the icon, update it in both the standalone icon and the logo files
 | Card | `#0785BC` |
 | Chip | `#FAC965` |
 | Chip divisions | `#94712D` |
-| Clasp separator and dark-background wordmark | `#FFFFFF` |
+| Card lettering, clasp separator, and dark-background wordmark | `#FFFFFF` |
 | Dark-background wallet outline | `#83909E` |
+
+Card lettering is outlined in all source files, including `fossbilling-logo-text.svg`.
 
 The wordmark uses [Manrope](https://github.com/google/fonts/tree/main/ofl/manrope), with FOSS at weight 700 and Billing at weight 450, with default letter spacing. Manrope is distributed under the [SIL Open Font License](source/fonts/Manrope/OFL.txt). The font license applies to the font, not the FOSSBilling branding.
 
