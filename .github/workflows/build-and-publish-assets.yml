@@ -84,20 +84,19 @@ jobs:
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           # Cloudflare R2 - CI/CD (branding GitHub Actions) credentials stored in 1Password.
-          CF_R2_ACCESS_KEY_ID: op://mkqkefntgcmjlgyxzeaekzuuvq/xddzaoo5rrgl3wg2memaxpcntm/access-key-id
-          CF_R2_SECRET_ACCESS_KEY: op://mkqkefntgcmjlgyxzeaekzuuvq/xddzaoo5rrgl3wg2memaxpcntm/secret-access-key
+          CLOUDFLARE_R2_ACCESS_KEY_ID: op://mkqkefntgcmjlgyxzeaekzuuvq/xddzaoo5rrgl3wg2memaxpcntm/access-key-id
+          CLOUDFLARE_R2_SECRET_ACCESS_KEY: op://mkqkefntgcmjlgyxzeaekzuuvq/xddzaoo5rrgl3wg2memaxpcntm/secret-access-key
 
       - name: Publish Assets to Cloudflare R2
         if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.publish)
         env:
-          AWS_ACCESS_KEY_ID: ${{ steps.load-secrets.outputs.CF_R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ steps.load-secrets.outputs.CF_R2_SECRET_ACCESS_KEY }}
-          AWS_S3_ENDPOINT: ${{ vars.CF_R2_ENDPOINT_URL }}
-          AWS_S3_BUCKET: ${{ vars.CF_R2_DOWNLOAD_BUCKET }}
+          AWS_ACCESS_KEY_ID: ${{ steps.load-secrets.outputs.CLOUDFLARE_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ steps.load-secrets.outputs.CLOUDFLARE_R2_SECRET_ACCESS_KEY }}
+          AWS_S3_BUCKET: ${{ vars.CLOUDFLARE_R2_BRANDING_BUCKET }}
           AWS_DEFAULT_REGION: auto
         run: |
           # Configure AWS CLI to use the classic transfer client for S3 operations.
           aws configure set default.s3.preferred_transfer_client classic
           aws s3 sync "$RUNNER_TEMP/branding-export/" "s3://$AWS_S3_BUCKET/" \
-            --endpoint-url "${AWS_S3_ENDPOINT}" \
+            --endpoint-url https://${{ vars.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com \
             --delete --cache-control "public, max-age=300" --no-progress
