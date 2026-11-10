@@ -1,7 +1,9 @@
 #!/usr/bin/env node
-import { readFile, writeFile, mkdir, readdir, rm } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, readdir, rm, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
+import sharp from 'sharp';
+import { optimize } from 'svgo';
 import type { Asset, AssetManifest, Variant } from './types.ts';
 import svgoConfig from './svgo.config.ts';
 import { createPreview } from './create-preview.ts';
@@ -13,14 +15,19 @@ const help = `Optimise FOSSBilling SVG masters, then generate PNGs, favicons, a 
 
 Usage: node scripts/generate-assets.ts [options]
   --config PATH   Configuration file (default: export.config.json)
-  --output PATH   Override PNG/favicon output directory
-  --assets-output PATH  Override optimised SVG output directory
   --help          Show this help
 
-Input and configured output paths are relative to the configuration file.
-Both output overrides are relative to the current working directory.
+Paths in the configuration file are relative to the configuration file.
+SVGs are written to assets/, PNGs and favicons to dist/.
 Existing exports are overwritten and obsolete generated files are removed.
 `;
+
+// Vector sources render at a higher density, then downsample for crisper PNGs.
+const RENDER_DENSITY_FACTOR = 2;
+const BASE_DENSITY = 72;
+const FAVICON_PNG_SIZE = 180;
+
+const VARIANT_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 function sizes(value: unknown, name: string): number[] {
   if (!Array.isArray(value) || value.some(n => !Number.isInteger(n) || n < 1 || n > 4096)) {
@@ -46,61 +53,28 @@ function squareSvg(svg: string, label: string) {
   return svg.replace(root[0], replacement);
 }
 
-// ICO directory containing independently rendered RGBA PNG frames.
-function ico(frames: { size: number; png: Buffer }[]) {
-  const header = Buffer.alloc(6);
-  header.writeUInt16LE(1, 2);
-  header.writeUInt16LE(frames.length, 4);
-  let offset = 6 + frames.length * 16;
-  const entries = frames.map(({ size, png }) => {
-    const entry = Buffer.alloc(16);
-    entry.writeUInt8(size === 256 ? 0 : size, 0);
-    entry.writeUInt8(size === 256 ? 0 : size, 1);
-    entry.writeUInt16LE(1, 4);
-    entry.writeUInt16LE(32, 6);
-    entry.writeUInt32LE(png.length, 8);
-    entry.writeUInt32LE(offset, 12);
-    offset += png.length;
-    return entry;
-  });
-  return Buffer.concat([header, ...entries, ...frames.map(frame => frame.png)]);
+async function renderPng(svg: string, width: number) {
+  const input = Buffer.from(svg);
+  const metadata = await sharp(input).metadata();
+  const sourceWidth = metadata.width ?? width;
+  const density = Math.max(BASE_DENSITY, Math.ceil(BASE_DENSITY * RENDER_DENSITY_FACTOR * width / sourceWidth));
+  return sharp(input, { density }).resize({ width }).ensureAlpha().png().toBuffer();
 }
 
-async function main() {
-  const { values } = parseArgs({ options: {
-    config: { type: 'string', default: 'export.config.json' },
-    output: { type: 'string' },
-    'assets-output': { type: 'string' },
-    help: { type: 'boolean', default: false },
-  }});
-  if (values.help) { console.log(help); return; }
-  const configPath = path.resolve(values.config);
-  const configDir = path.dirname(configPath);
-  const config: {
-    iconSizes?: unknown;
-    logoWidths?: unknown;
-    output?: unknown;
-    assetsOutput?: unknown;
-    variants?: Record<string, { icon?: unknown; logo?: unknown } | null>;
-  } = JSON.parse(await readFile(configPath, 'utf8'));
-  const iconSizes = sizes(config.iconSizes ?? [128, 256, 512], 'iconSizes');
-  const logoWidths = sizes(config.logoWidths ?? [600, 1200], 'logoWidths');
-  if (typeof config.output !== 'string' || !config.output) throw new Error('Set output in the configuration.');
-  const output = values.output ? path.resolve(values.output) : path.resolve(configDir, config.output);
-  if (typeof config.assetsOutput !== 'string' || !config.assetsOutput) {
-    throw new Error('Set assetsOutput in the configuration (separate from source masters).');
-  }
-  const assetsOutput = values['assets-output']
-    ? path.resolve(values['assets-output']) : path.resolve(configDir, config.assetsOutput);
+interface ExportConfig {
+  iconSizes?: unknown;
+  logoWidths?: unknown;
+  variants?: Record<string, { icon?: unknown; logo?: unknown } | null>;
+}
+
+async function loadVariants(config: ExportConfig, configDir: string): Promise<{ variants: Variant[]; sources: Set<string> }> {
   if (!config.variants || typeof config.variants !== 'object' || Array.isArray(config.variants)
       || !Object.keys(config.variants).length) throw new Error('Configure at least one variant.');
-  const { default: sharp } = await import('sharp');
-  const { optimize } = await import('svgo');
   const variants: Variant[] = [];
   const sources = new Set<string>();
   // Validate and load every input before writing any exports.
   for (const [name, variant] of Object.entries(config.variants)) {
-    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name)) throw new Error(`Invalid variant name: ${name}`);
+    if (!VARIANT_NAME.test(name)) throw new Error(`Invalid variant name: ${name}`);
     const loaded = { icon: '', logo: '' };
     for (const type of ['icon', 'logo'] as const) {
       if (typeof variant?.[type] !== 'string') throw new Error(`${name}.${type} must be an SVG path.`);
@@ -119,36 +93,47 @@ async function main() {
     }
     variants.push({ name, ...loaded, square: squareSvg(loaded.icon, `${name} icon`) });
   }
-  // Check every destination before writing, including aliases through symlinked folders.
-  const { realpath, lstat } = await import('node:fs/promises');
+  return { variants, sources };
+}
+
+async function main() {
+  const { values } = parseArgs({ options: {
+    config: { type: 'string', default: 'export.config.json' },
+    help: { type: 'boolean', default: false },
+  }});
+  if (values.help) { console.log(help); return; }
+  const configPath = path.resolve(values.config);
+  const configDir = path.dirname(configPath);
+  const config: ExportConfig = JSON.parse(await readFile(configPath, 'utf8'));
+  const iconSizes = sizes(config.iconSizes ?? [128, 256, 512], 'iconSizes');
+  const logoWidths = sizes(config.logoWidths ?? [600, 1200], 'logoWidths');
+  const output = path.resolve(configDir, 'dist');
+  const assetsOutput = path.resolve(configDir, 'assets');
+  const { variants, sources } = await loadVariants(config, configDir);
+  // Dereference symlinks so a destination linked to a source cannot bypass the guards below.
   async function canonical(file: string): Promise<string> {
-    try { return await realpath(file); } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-      // A dangling symlink is not an ordinary missing destination.
-      const entry = await lstat(file).catch(e => { if (e.code !== 'ENOENT') throw e; return null; });
-      if (entry?.isSymbolicLink()) throw new Error(`Dangling symlink: ${file}`);
-      return path.join(await canonical(path.dirname(file)), path.basename(file));
+    try {
+      return await realpath(file);
+    } catch {
+      const dir = await realpath(path.dirname(file)).catch(() => path.resolve(path.dirname(file)));
+      return path.join(dir, path.basename(file));
     }
   }
   const sourcePaths = new Set(await Promise.all([...sources].map(canonical)));
   const files: { file: string; data: string | Buffer }[] = [];
   const assets: Asset[] = [];
   async function add(relative: string, data: string | Buffer, type: Asset['type'], variant: string | null, directory = output) {
-    const asset: Asset = { path: relative.split(path.sep).join('/'), variant, type, format: path.extname(relative).slice(1) };
-    if (asset.format === 'png') {
+    const format = path.extname(relative).slice(1);
+    if (format !== 'svg' && format !== 'png') throw new Error(`Unexpected output format: ${relative}`);
+    const asset: Asset = { path: relative.split(path.sep).join('/'), variant, type, format };
+    if (format === 'png') {
       const { width, height } = await sharp(data).metadata();
-      Object.assign(asset, { width, height });
+      asset.width = width;
+      asset.height = height;
     }
     files.push({ file: path.join(directory, relative), data });
     assets.push(asset);
     return asset;
-  }
-  async function png(svg: string, width: number) {
-    const input = Buffer.from(svg);
-    const metadata = await sharp(input).metadata();
-    // Render from vectors at >= 2x target resolution, then downsample.
-    const density = Math.max(72, Math.ceil(144 * width / metadata.width!));
-    return sharp(input, { density }).resize({ width }).ensureAlpha().png().toBuffer();
   }
   for (const variant of variants) {
     const prefix = variant.name;
@@ -156,24 +141,20 @@ async function main() {
       await add(`${prefix}/fossbilling-${type}.svg`, variant[type], type, prefix, assetsOutput);
     }
     for (const size of iconSizes) {
-      await add(`${prefix}/png/icon/fossbilling-icon-${size}.png`, await png(variant.square, size), 'icon', prefix);
+      await add(`${prefix}/png/icon/fossbilling-icon-${size}.png`, await renderPng(variant.square, size), 'icon', prefix);
     }
     for (const width of logoWidths) {
-      await add(`${prefix}/png/logo/fossbilling-logo-${width}w.png`, await png(variant.logo, width), 'logo', prefix);
+      await add(`${prefix}/png/logo/fossbilling-logo-${width}w.png`, await renderPng(variant.logo, width), 'logo', prefix);
     }
     await add(`${prefix}/favicon/favicon.svg`, variant.square, 'favicon', prefix);
-    const frames = [];
-    for (const size of [16, 32, 48]) frames.push({ size, png: await png(variant.square, size) });
-    const favicon = await add(`${prefix}/favicon/favicon.ico`, ico(frames), 'favicon', prefix);
-    favicon.sizes = frames.map(({ size }) => size);
-    await add(`${prefix}/favicon/apple-touch-icon.png`, await png(variant.square, 180), 'apple-touch-icon', prefix);
+    await add(`${prefix}/favicon/apple-touch-icon.png`, await renderPng(variant.square, FAVICON_PNG_SIZE), 'apple-touch-icon', prefix);
   }
-  const preview = await add('preview.png', await createPreview(variants, sharp, png), 'preview', null);
+  const preview = await add('preview.png', await createPreview(variants, sharp, renderPng), 'preview', null);
   preview.variants = variants.map(({ name }) => name);
   // Paths describe the published bundle, where assets/ and dist/ are combined.
   const manifest: AssetManifest = { exportedAt: new Date().toISOString(), files: assets };
   files.push({ file: path.join(output, 'manifest.json'), data: JSON.stringify(manifest, null, 2) + '\n' });
-  const targets = new Set();
+  const targets = new Set<string>();
   for (const { file } of files) {
     const target = await canonical(file);
     if (sourcePaths.has(target)) throw new Error(`Output would overwrite a source: ${target}`);
@@ -182,10 +163,13 @@ async function main() {
   }
   const expected = new Set(files.map(({ file }) => file));
   const obsolete = new Set<string>();
-  // Only recognise this exporter's filenames; do not traverse symlinked directories.
+  // Only recognise this exporter's filenames. Legacy ICO favicons are
+  // recognised only for removal; they are no longer generated.
+  // Scoped to the old variant/favicon path so unrelated files are untouched.
+  const legacy = /^[a-z0-9]+(?:-[a-z0-9]+)*\/favicon\/favicon\.ico$/;
   const generated = {
     assets: /^[a-z0-9]+(?:-[a-z0-9]+)*\/fossbilling-(?:icon|logo)\.svg$/,
-    dist: /^(?:manifest\.json|preview\.png|[a-z0-9]+(?:-[a-z0-9]+)*\/(?:png\/icon\/fossbilling-icon-\d+\.png|png\/logo\/fossbilling-logo-\d+w\.png|favicon\/(?:favicon\.(?:svg|ico)|apple-touch-icon\.png)))$/,
+    dist: /^(?:manifest\.json|preview\.png|[a-z0-9]+(?:-[a-z0-9]+)*\/(?:png\/icon\/fossbilling-icon-\d+\.png|png\/logo\/fossbilling-logo-\d+w\.png|favicon\/(?:favicon\.svg|apple-touch-icon\.png)))$/,
   };
   for (const [directory, pattern] of [[assetsOutput, generated.assets], [output, generated.dist]] as const) {
     const directories = [directory];
@@ -196,7 +180,8 @@ async function main() {
         const file = path.join(current, entry.name);
         if (entry.isDirectory()) { directories.push(file); continue; }
         const relative = path.relative(directory, file).split(path.sep).join('/');
-        if (!pattern.test(relative) || expected.has(file)) continue;
+        const recognised = pattern.test(relative) || legacy.test(relative);
+        if (!recognised || expected.has(file)) continue;
         if (sourcePaths.has(await canonical(file))) throw new Error(`Output would remove a source: ${file}`);
         obsolete.add(file);
       }

@@ -5,14 +5,15 @@ export interface Variant {
   square: string;
 }
 
+export type AssetType = 'icon' | 'logo' | 'favicon' | 'apple-touch-icon' | 'preview';
+
 export interface Asset {
   path: string;
   variant: string | null;
-  type: 'icon' | 'logo' | 'favicon' | 'apple-touch-icon' | 'preview';
-  format: string;
+  type: AssetType;
+  format: 'svg' | 'png';
   width?: number;
   height?: number;
-  sizes?: number[];
   variants?: string[];
 }
 
