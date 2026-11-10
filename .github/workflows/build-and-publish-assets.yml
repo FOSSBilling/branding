@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: 'Publish the Branding Assets'
+        description: 'Publish Branding Assets'
         type: boolean
         required: false
         default: false
