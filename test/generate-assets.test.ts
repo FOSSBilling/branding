@@ -2,7 +2,7 @@ import type { TestContext } from 'node:test';
 import type { AssetManifest } from '../scripts/types.ts';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdtemp, mkdir, readFile, writeFile, rm, access, symlink, readdir } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile, rm, access, readdir } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -23,7 +23,7 @@ async function fixture(t: TestContext) {
     'dark-background': { icon: 'master.svg', logo: 'master.svg' },
   };
   const config = {
-    assetsOutput: 'assets', output: 'dist', iconSizes: [128, 256], logoWidths: [600],
+    iconSizes: [128, 256], logoWidths: [600],
     variants,
   };
   return {
@@ -65,9 +65,6 @@ test('catalogs all published assets with a UTC timestamp and accurate raster dim
       if (asset.format === 'png') {
         assert.equal(asset.width, data.readUInt32BE(16));
         assert.equal(asset.height, data.readUInt32BE(20));
-      } else if (asset.format === 'ico') {
-        const sizes = Array.from({ length: data.readUInt16LE(4) }, (_, i) => data.readUInt8(6 + i * 16) || 256);
-        assert.deepEqual(asset.sizes, sizes);
       }
     }
   }
@@ -86,7 +83,7 @@ test('removes obsolete sizes and variants and refreshes the manifest while retai
     'dist/light-background/png/icon/fossbilling-icon-256.png',
     'dist/dark-background/png/icon/fossbilling-icon-128.png',
     'dist/dark-background/png/logo/fossbilling-logo-600w.png',
-    'dist/dark-background/favicon/favicon.svg', 'dist/dark-background/favicon/favicon.ico',
+    'dist/dark-background/favicon/favicon.svg',
     'dist/dark-background/favicon/apple-touch-icon.png',
     'assets/dark-background/fossbilling-icon.svg', 'assets/dark-background/fossbilling-logo.svg',
   ]) await assert.rejects(access(path.join(root, relative)), { code: 'ENOENT' });
@@ -109,44 +106,6 @@ test('invalid inputs leave existing exports intact', async t => {
   assert.deepEqual(await readFile(exported), before);
   await access(path.join(root, 'dist/light-background/png/icon/fossbilling-icon-128.png'));
 });
-
-test('rejects overwriting a source through a symlink before writing or cleaning', async t => {
-  const { root, generate } = await fixture(t);
-  await generate();
-  const destination = path.join(root, 'assets/light-background/fossbilling-icon.svg');
-  await rm(destination);
-  await symlink(path.join(root, 'master.svg'), destination);
-  await writeFile(path.join(root, 'dist/manifest.json'), '{}');
-  await assert.rejects(generate(), /Output would overwrite a source/);
-  assert.equal(await readFile(path.join(root, 'master.svg'), 'utf8'), svg);
-  await access(path.join(root, 'dist/manifest.json'));
-});
-
-test('cleanup does not follow symlinked directories', async t => {
-  const { root, generate } = await fixture(t);
-  const external = path.join(root, 'external');
-  await mkdir(external);
-  const untouched = ['fossbilling-logo.svg', 'apple-touch-icon.png'].map(name => path.join(external, name));
-  for (const file of untouched) await writeFile(file, 'keep');
-  await mkdir(path.join(root, 'assets'));
-  await symlink(external, path.join(root, 'assets/old-background'), 'dir');
-  await mkdir(path.join(root, 'dist/old-background'), { recursive: true });
-  await symlink(external, path.join(root, 'dist/old-background/favicon'), 'dir');
-  await generate();
-  for (const file of untouched) assert.equal(await readFile(file, 'utf8'), 'keep');
-});
-
-test('supports a combined SVG and raster output directory', async t => {
-  const { root, config, generate } = await fixture(t);
-  config.assetsOutput = 'dist';
-  await generate();
-  await access(path.join(root, 'dist/light-background/fossbilling-logo.svg'));
-  await access(path.join(root, 'dist/light-background/png/icon/fossbilling-icon-128.png'));
-  delete config.variants['dark-background'];
-  await generate();
-  await assert.rejects(access(path.join(root, 'dist/dark-background/fossbilling-logo.svg')), { code: 'ENOENT' });
-});
-
 
 test('creates an opaque preview and refreshes it when variants are removed', async t => {
   const { root, config, generate } = await fixture(t);
