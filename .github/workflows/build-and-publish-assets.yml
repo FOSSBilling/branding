@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: 'Publish the branding assets to Cloudflare R2'
+        description: 'Publish the Branding Assets'
         type: boolean
         required: false
         default: false
