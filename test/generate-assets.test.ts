@@ -76,6 +76,9 @@ test('removes obsolete sizes and variants and refreshes the manifest while retai
   await generate();
   await writeFile(path.join(root, 'dist', 'manifest.json'), '{}');
   await writeFile(path.join(root, 'dist', 'notes.txt'), 'keep');
+  // Stale ICO favicons from previous exports are legacy outputs and must be removed.
+  await writeFile(path.join(root, 'dist/light-background/favicon/favicon.ico'), 'stale');
+  await writeFile(path.join(root, 'dist/dark-background/favicon/favicon.ico'), 'stale');
   config.iconSizes = [128];
   delete config.variants['dark-background'];
   await generate();
@@ -83,7 +86,8 @@ test('removes obsolete sizes and variants and refreshes the manifest while retai
     'dist/light-background/png/icon/fossbilling-icon-256.png',
     'dist/dark-background/png/icon/fossbilling-icon-128.png',
     'dist/dark-background/png/logo/fossbilling-logo-600w.png',
-    'dist/dark-background/favicon/favicon.svg',
+    'dist/dark-background/favicon/favicon.svg', 'dist/dark-background/favicon/favicon.ico',
+    'dist/light-background/favicon/favicon.ico',
     'dist/dark-background/favicon/apple-touch-icon.png',
     'assets/dark-background/fossbilling-icon.svg', 'assets/dark-background/fossbilling-logo.svg',
   ]) await assert.rejects(access(path.join(root, relative)), { code: 'ENOENT' });

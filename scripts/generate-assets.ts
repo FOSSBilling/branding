@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFile, writeFile, mkdir, readdir, rm } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, readdir, rm, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import sharp from 'sharp';
@@ -110,7 +110,16 @@ async function main() {
   const output = path.resolve(configDir, 'dist');
   const assetsOutput = path.resolve(configDir, 'assets');
   const { variants, sources } = await loadVariants(config, configDir);
-  const sourcePaths = new Set([...sources].map(file => path.resolve(file)));
+  // Dereference symlinks so a destination linked to a source cannot bypass the guards below.
+  async function canonical(file: string): Promise<string> {
+    try {
+      return await realpath(file);
+    } catch {
+      const dir = await realpath(path.dirname(file)).catch(() => path.resolve(path.dirname(file)));
+      return path.join(dir, path.basename(file));
+    }
+  }
+  const sourcePaths = new Set(await Promise.all([...sources].map(canonical)));
   const files: { file: string; data: string | Buffer }[] = [];
   const assets: Asset[] = [];
   async function add(relative: string, data: string | Buffer, type: Asset['type'], variant: string | null, directory = output) {
@@ -147,7 +156,7 @@ async function main() {
   files.push({ file: path.join(output, 'manifest.json'), data: JSON.stringify(manifest, null, 2) + '\n' });
   const targets = new Set<string>();
   for (const { file } of files) {
-    const target = path.resolve(file);
+    const target = await canonical(file);
     if (sourcePaths.has(target)) throw new Error(`Output would overwrite a source: ${target}`);
     if (targets.has(target)) throw new Error(`Output paths overlap: ${target}`);
     targets.add(target);
@@ -156,7 +165,8 @@ async function main() {
   const obsolete = new Set<string>();
   // Only recognise this exporter's filenames. Legacy ICO favicons are
   // recognised only for removal; they are no longer generated.
-  const legacy = /(?:^|\/)favicon\.ico$/;
+  // Scoped to the old variant/favicon path so unrelated files are untouched.
+  const legacy = /^[a-z0-9]+(?:-[a-z0-9]+)*\/favicon\/favicon\.ico$/;
   const generated = {
     assets: /^[a-z0-9]+(?:-[a-z0-9]+)*\/fossbilling-(?:icon|logo)\.svg$/,
     dist: /^(?:manifest\.json|preview\.png|[a-z0-9]+(?:-[a-z0-9]+)*\/(?:png\/icon\/fossbilling-icon-\d+\.png|png\/logo\/fossbilling-logo-\d+w\.png|favicon\/(?:favicon\.svg|apple-touch-icon\.png)))$/,
@@ -172,7 +182,7 @@ async function main() {
         const relative = path.relative(directory, file).split(path.sep).join('/');
         const recognised = pattern.test(relative) || legacy.test(relative);
         if (!recognised || expected.has(file)) continue;
-        if (sourcePaths.has(path.resolve(file))) throw new Error(`Output would remove a source: ${file}`);
+        if (sourcePaths.has(await canonical(file))) throw new Error(`Output would remove a source: ${file}`);
         obsolete.add(file);
       }
     }
